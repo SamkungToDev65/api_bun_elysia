@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
-import bagApi from "./bag-api"; // import ไฟล์ที่สร้างข้างบน
+import bankApiRoutes from "./bank-api";
 
 import { PrismaClient } from "../generated/prisma/client";
 import {
@@ -33,9 +33,13 @@ const app = new Elysia();
 
 app
   .use(cors())
-  .get("/", () => "Financial API is running!")
-  .use(bagApi) // ลงทะเบียนใช้งาน
-  .listen(3000)
+  .get("/", () => "Financial API is running!");
+
+// Register Bank API routes
+bankApiRoutes(app, prisma);
+
+// Product Routes
+app
   // CREATE - สร้างสินค้าใหม่
   .post(
     "/products",
@@ -46,7 +50,7 @@ app
     {
       body: ProductPlainInputCreate,
       response: ProductPlain,
-    },
+    }
   )
 
   // READ - ดึงสินค้าทั้งหมด
@@ -58,7 +62,7 @@ app
     },
     {
       response: t.Array(ProductPlain),
-    },
+    }
   )
 
   // READ - ดึงสินค้าตาม ID
@@ -74,7 +78,7 @@ app
         200: ProductPlain,
         404: t.String(),
       },
-    },
+    }
   )
 
   // UPDATE - อัปเดตสินค้า
@@ -98,7 +102,7 @@ app
         200: ProductPlain,
         404: t.String(),
       },
-    },
+    }
   )
 
   // DELETE - ลบสินค้า
@@ -115,7 +119,7 @@ app
     },
     {
       response: t.Object({ message: t.String() }),
-    },
+    }
   );
 
 // For Vercel: export as default
