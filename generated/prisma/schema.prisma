@@ -18,6 +18,58 @@ generator prismabox {
   output                      = "../generated/prismabox"
 }
 
+// 1. ตารางเก็บข้อมูลพนักงาน/ผู้ใช้งาน (อ้างอิงจากระบบเดิมของคุณ)
+model User {
+  id           String        @id @default(cuid())
+  person_code  String        @unique // รหัสพนักงานที่ใช้เชื่อมโยงระบบ
+  fullname     String?
+  bank_name    String? // สำหรับเก็บข้อมูล Book Bank ตามที่เคยสอบถาม
+  bank_account String?
+  balance      Decimal       @default(0) // ยอดเงินคงเหลือปัจจุบัน
+  transactions Transaction[]
+  commitments  Commitment[]
+  createdAt    DateTime      @default(now())
+}
+
+// 2. ตารางบันทึกรายรับ-รายจ่าย (รองรับ Interface Transaction ในโค้ด)
+model Transaction {
+  id       String   @id @default(cuid())
+  amount   Decimal
+  type     String // 'income' หรือ 'expense'
+  category String // 'อาหาร', 'เดินทาง', 'ช้อปปิ้ง', ฯลฯ
+  note     String?
+  date     DateTime @default(now())
+
+  // ความสัมพันธ์กับ User
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // ถ้าเป็นรายการที่จ่ายคืนให้ Commitment (เช่น การผ่อน)
+  commitmentId String?
+  commitment   Commitment? @relation(fields: [commitmentId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// 3. ตารางติดตามการยืม/ผ่อนชำระ (รองรับ Interface Commitment ในโค้ด)
+model Commitment {
+  id            String  @id @default(cuid())
+  title         String // หัวข้อ เช่น "ยืมเงินเพื่อน", "ผ่อน iPhone"
+  targetAmount  Decimal // ยอดเต็ม
+  currentAmount Decimal @default(0) // ยอดที่ชำระไปแล้ว
+  type          String // 'lend' (ให้ยืม/ยืม) หรือ 'installment' (ผ่อน)
+  person        String? // ชื่อคู่กรณี
+  category      String  @default("การยืม/ผ่อน")
+
+  // ความสัมพันธ์
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[] // รายการย่อยที่จ่ายเข้ามาสมทบยอดนี้
+
+  createdAt DateTime @default(now())
+}
+
+// ตารางสินค้าเดิม (คงไว้ตามต้นฉบับของคุณ)
 model Product {
   id     String   @id @default(cuid())
   name   String   @unique

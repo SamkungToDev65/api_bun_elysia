@@ -1,33 +1,28 @@
 import { Elysia, t } from "elysia";
 import {
   TransactionSchema,
-  TransactionCreateSchema,
-  TransactionUpdateSchema,
   ErrorResponseSchema,
 } from "./types";
 
 export function transactionsRoutes(app: Elysia, prisma: any) {
   return app
-    // Create Transaction
+    // --- 1. Create Transaction (บันทึกรายรับ-รายจ่าย) ---
     .post(
       "/bank-api/transactions",
       async ({ body, set }) => {
         try {
-          // Verify user exists
-          const user = await prisma.user.findUnique({
-            where: { person_code: body.person_code },
-            select: { id: true },
-          });
+          // ดึง User หลักคนเดียวเสมอ
+          const user = await prisma.user.findFirst();
 
           if (!user) {
             set.status = 404;
             return {
               message: "User not found",
-              error: `User with person_code ${body.person_code} not found`,
+              error: "Please run /users/me first to initialize the main account.",
             };
           }
 
-          // Create transaction
+          // บันทึกธุรกรรมลงใน Database
           const transaction = await prisma.transaction.create({
             data: {
               amount: body.amount,
@@ -40,14 +35,14 @@ export function transactionsRoutes(app: Elysia, prisma: any) {
             },
           });
 
-          // Update user balance
+          // อัปเดตยอดเงินในบัญชีหลัก (Increment/Decrement ตามประเภท)
           const diff = body.type === "income" ? body.amount : -body.amount;
           await prisma.user.update({
             where: { id: user.id },
             data: { balance: { increment: diff } },
           });
 
-          // If linked to commitment, update commitment progress
+          // ถ้ามีการระบุการผ่อน (Commitment) ให้ไปเพิ่มยอดที่จ่ายแล้ว
           if (body.commitmentId) {
             await prisma.commitment.update({
               where: { id: body.commitmentId },
@@ -77,7 +72,6 @@ export function transactionsRoutes(app: Elysia, prisma: any) {
       },
       {
         body: t.Object({
-          person_code: t.String(),
           amount: t.Number(),
           type: t.Union([t.Literal("income"), t.Literal("expense")]),
           category: t.String(),
@@ -93,22 +87,15 @@ export function transactionsRoutes(app: Elysia, prisma: any) {
       }
     )
 
-    // Get Transactions by User
+    // --- 2. Get All Transactions (ดึงประวัติทั้งหมด) ---
     .get(
-      "/bank-api/transactions/:person_code",
-      async ({ params: { person_code }, query, set }) => {
+      "/bank-api/transactions/all",
+      async ({ query, set }) => {
         try {
-          const user = await prisma.user.findUnique({
-            where: { person_code },
-            select: { id: true },
-          });
-
+          const user = await prisma.user.findFirst();
           if (!user) {
             set.status = 404;
-            return {
-              message: "User not found",
-              error: `User with person_code ${person_code} not found`,
-            };
+            return { message: "User not found", error: "Main account not found" };
           }
 
           const limit = query.limit ? parseInt(query.limit as string) : 50;
@@ -142,166 +129,18 @@ export function transactionsRoutes(app: Elysia, prisma: any) {
       }
     )
 
-    // Get Transaction by ID
-    .get(
-      "/bank-api/transactions/:person_code/:transaction_id",
-      async ({ params: { person_code, transaction_id }, set }) => {
-        try {
-          const user = await prisma.user.findUnique({
-            where: { person_code },
-            select: { id: true },
-          });
-
-          if (!user) {
-            set.status = 404;
-            return {
-              message: "User not found",
-              error: `User with person_code ${person_code} not found`,
-            };
-          }
-
-          const transaction = await prisma.transaction.findFirst({
-            where: {
-              id: transaction_id,
-              userId: user.id,
-            },
-          });
-
-          if (!transaction) {
-            set.status = 404;
-            return {
-              message: "Transaction not found",
-              error: `Transaction with ID ${transaction_id} not found`,
-            };
-          }
-
-          return {
-            id: transaction.id,
-            amount: Number(transaction.amount),
-            type: transaction.type,
-            category: transaction.category,
-            note: transaction.note,
-            date: transaction.date.toISOString().split("T")[0],
-            userId: transaction.userId,
-            commitmentId: transaction.commitmentId,
-            createdAt: transaction.createdAt.toISOString(),
-          };
-        } catch (error) {
-          set.status = 500;
-          return {
-            message: "Failed to fetch transaction",
-            error: String(error),
-          };
-        }
-      }
-    )
-
-    // Update Transaction
-    .patch(
-      "/bank-api/transactions/:person_code/:transaction_id",
-      async ({
-        params: { person_code, transaction_id },
-        body,
-        set,
-      }: {
-        params: { person_code: string; transaction_id: string };
-        body: any;
-        set: any;
-      }) => {
-        try {
-          const user = await prisma.user.findUnique({
-            where: { person_code },
-            select: { id: true },
-          });
-
-          if (!user) {
-            set.status = 404;
-            return {
-              message: "User not found",
-              error: `User with person_code ${person_code} not found`,
-            };
-          }
-
-          // Get old transaction to calculate diff
-          const oldTx = await prisma.transaction.findFirst({
-            where: {
-              id: transaction_id,
-              userId: user.id,
-            },
-          });
-
-          if (!oldTx) {
-            set.status = 404;
-            return {
-              message: "Transaction not found",
-              error: `Transaction with ID ${transaction_id} not found`,
-            };
-          }
-
-          // Calculate balance diff
-          const oldDiff =
-            oldTx.type === "income" ? Number(oldTx.amount) : -Number(oldTx.amount);
-          const newAmount = body.amount || Number(oldTx.amount);
-          const newDiff =
-            oldTx.type === "income" ? newAmount : -newAmount;
-          const balanceDiff = newDiff - oldDiff;
-
-          // Update transaction
-          const updated = await prisma.transaction.update({
-            where: { id: transaction_id },
-            data: {
-              amount: body.amount,
-              category: body.category,
-              note: body.note,
-              date: body.date ? new Date(body.date) : undefined,
-            },
-          });
-
-          // Update user balance
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { balance: { increment: balanceDiff } },
-          });
-
-          return {
-            id: updated.id,
-            amount: Number(updated.amount),
-            type: updated.type,
-            category: updated.category,
-            note: updated.note,
-            date: updated.date.toISOString().split("T")[0],
-            userId: updated.userId,
-            commitmentId: updated.commitmentId,
-            createdAt: updated.createdAt.toISOString(),
-          };
-        } catch (error) {
-          set.status = 500;
-          return {
-            message: "Failed to update transaction",
-            error: String(error),
-          };
-        }
-      }
-    )
-
-    // Delete Transaction
+    // --- 3. Delete Transaction (ลบรายการและคืนค่า Balance) ---
     .delete(
-      "/bank-api/transactions/:person_code/:transaction_id",
-      async ({ params: { person_code, transaction_id }, set }) => {
+      "/bank-api/transactions/:transaction_id",
+      async ({ params: { transaction_id }, set }) => {
         try {
-          const user = await prisma.user.findUnique({
-            where: { person_code },
-            select: { id: true },
-          });
-
+          const user = await prisma.user.findFirst();
           if (!user) {
             set.status = 404;
-            return {
-              message: "User not found",
-              error: `User with person_code ${person_code} not found`,
-            };
+            return { message: "User not found", error: "Main account not found" };
           }
 
+          // ค้นหาข้อมูลเดิมก่อนลบเพื่อนำมาคำนวณเงินคืน
           const transaction = await prisma.transaction.findFirst({
             where: {
               id: transaction_id,
@@ -313,26 +152,26 @@ export function transactionsRoutes(app: Elysia, prisma: any) {
             set.status = 404;
             return {
               message: "Transaction not found",
-              error: `Transaction with ID ${transaction_id} not found`,
+              error: `ID ${transaction_id} not found`,
             };
           }
 
-          // Delete transaction
+          // ลบข้อมูล
           await prisma.transaction.delete({
             where: { id: transaction_id },
           });
 
-          // Reverse balance update
-          const diff =
-            transaction.type === "income"
-              ? -Number(transaction.amount)
-              : Number(transaction.amount);
+          // คืนเงินเข้า Balance (ย้อนกลับ Logic เดิม)
+          const diff = transaction.type === "income"
+              ? -Number(transaction.amount) // รายได้ถูกลบ = เงินลด
+              : Number(transaction.amount);  // รายจ่ายถูกลบ = เงินเพิ่ม
+          
           await prisma.user.update({
             where: { id: user.id },
             data: { balance: { increment: diff } },
           });
 
-          // If linked to commitment, reverse commitment update
+          // ถ้ามีการผูกผ่อนชำระ ให้ลดค่าที่จ่ายไปแล้วลงด้วย
           if (transaction.commitmentId) {
             await prisma.commitment.update({
               where: { id: transaction.commitmentId },

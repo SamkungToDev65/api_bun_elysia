@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import type { PrismaClient } from "../generated/prisma/client";
+import type { PrismaClient } from "../../generated/prisma/client";
 
 import { usersRoutes } from "./users";
 import { transactionsRoutes } from "./transactions";

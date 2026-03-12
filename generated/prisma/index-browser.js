@@ -120,6 +120,40 @@ exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
   Serializable: 'Serializable'
 });
 
+exports.Prisma.UserScalarFieldEnum = {
+  id: 'id',
+  person_code: 'person_code',
+  fullname: 'fullname',
+  bank_name: 'bank_name',
+  bank_account: 'bank_account',
+  balance: 'balance',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.TransactionScalarFieldEnum = {
+  id: 'id',
+  amount: 'amount',
+  type: 'type',
+  category: 'category',
+  note: 'note',
+  date: 'date',
+  userId: 'userId',
+  commitmentId: 'commitmentId',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.CommitmentScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  targetAmount: 'targetAmount',
+  currentAmount: 'currentAmount',
+  type: 'type',
+  person: 'person',
+  category: 'category',
+  userId: 'userId',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.ProductScalarFieldEnum = {
   id: 'id',
   name: 'name',
@@ -144,6 +178,9 @@ exports.Prisma.NullsOrder = {
 
 
 exports.Prisma.ModelName = {
+  User: 'User',
+  Transaction: 'Transaction',
+  Commitment: 'Commitment',
   Product: 'Product'
 };
 
